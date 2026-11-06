@@ -1,4 +1,4 @@
-# MCP VMware(vmWhere)— vCenter 唯讀查詢,HTTP 模式(Streamable HTTP,端點 /mcp/)
+# MCP VMware — vCenter 唯讀查詢,HTTP 模式(Streamable HTTP,端點 /mcp/)
 
 FROM python:3.11-slim AS base
 

@@ -10,10 +10,10 @@ import sys
 
 import uvicorn
 
-from mcp_vmwhere.config import ConfigError
-from mcp_vmwhere.http_app import create_app
+from mcp_vmware.config import ConfigError
+from mcp_vmware.http_app import create_app
 
-logger = logging.getLogger("mcp_vmwhere")
+logger = logging.getLogger("mcp_vmware")
 
 
 def run_http_server() -> None:

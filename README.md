@@ -1,4 +1,4 @@
-# mcp-vmwhere
+# mcp-vmware
 
 一個**唯讀**的 MCP server,讓 Claude 能查詢 VMware vCenter 環境。
 
@@ -46,7 +46,7 @@ pip install -e .
 ## 啟動
 
 ```bash
-python -m mcp_vmwhere
+python -m mcp_vmware
 ```
 
 以 stdio transport 執行,通常由 MCP 用戶端(Claude Code / Claude Desktop)自動啟動。
@@ -54,18 +54,18 @@ python -m mcp_vmwhere
 ## 接入 Claude Code
 
 ```bash
-claude mcp add vmwhere \
+claude mcp add vmware \
   -e VCENTER_HOST=vcenter.example.com \
   -e VCENTER_USER=administrator@vsphere.local \
   -e VCENTER_PASSWORD=yourpassword \
-  -- python -m mcp_vmwhere
+  -- python -m mcp_vmware
 ```
 
 ## 接入 Claude Desktop
 
 Claude Desktop 由 app 直接啟動 server 行程,**不會**繼承終端機的 `PATH` 與虛擬環境 —
 `command` 請填 Python 直譯器的**絕對路徑**(有用虛擬環境就填該環境下的 python),
-否則會出現找不到指令或 `No module named mcp_vmwhere`。
+否則會出現找不到指令或 `No module named mcp_vmware`。
 
 取得絕對路徑:
 
@@ -81,16 +81,16 @@ python -c "import sys; print(sys.executable)"
    - macOS:`~/Library/Application Support/Claude/claude_desktop_config.json`
    - Windows:`%APPDATA%\Claude\claude_desktop_config.json`
 
-2. 在 `mcpServers` 底下加入 `vmwhere`(把路徑與帳密換成自己的):
+2. 在 `mcpServers` 底下加入 `vmware`(把路徑與帳密換成自己的):
 
    macOS / Linux:
 
    ```json
    {
      "mcpServers": {
-       "vmwhere": {
+       "vmware": {
          "command": "/Users/yourname/git/mcp-vmware/.venv/bin/python",
-         "args": ["-m", "mcp_vmwhere"],
+         "args": ["-m", "mcp_vmware"],
          "env": {
            "VCENTER_HOST": "vcenter.example.com",
            "VCENTER_USER": "readonly@vsphere.local",
@@ -107,9 +107,9 @@ python -c "import sys; print(sys.executable)"
    ```json
    {
      "mcpServers": {
-       "vmwhere": {
+       "vmware": {
          "command": "C:\\Users\\yourname\\git\\mcp-vmware\\.venv\\Scripts\\python.exe",
-         "args": ["-m", "mcp_vmwhere"],
+         "args": ["-m", "mcp_vmware"],
          "env": {
            "VCENTER_HOST": "vcenter.example.com",
            "VCENTER_USER": "readonly@vsphere.local",
@@ -124,7 +124,7 @@ python -c "import sys; print(sys.executable)"
 3. **完全結束**(Quit,不是關視窗)Claude Desktop 後重新開啟。
 
 4. 在對話輸入框左下角點 **Add files, connectors, and more** → **Connectors** →
-   **Manage connectors**,選 `vmwhere` 就會看到本 server 的 9 個唯讀工具。
+   **Manage connectors**,選 `vmware` 就會看到本 server 的 9 個唯讀工具。
 
 ### 試著問問看
 
@@ -134,7 +134,7 @@ python -c "import sys; print(sys.executable)"
 
 ### 疑難排解
 
-看不到 `vmwhere` 或工具呼叫失敗時,先看 log:
+看不到 `vmware` 或工具呼叫失敗時,先看 log:
 
 ```bash
 # macOS
@@ -143,7 +143,7 @@ tail -n 50 -f ~/Library/Logs/Claude/mcp*.log
 
 ```powershell
 # Windows
-type "%APPDATA%\Claude\logs\mcp-server-vmwhere.log"
+type "%APPDATA%\Claude\logs\mcp-server-vmware.log"
 ```
 
 再用同一組路徑與環境變數手動啟動一次,確認 server 本身沒問題:
@@ -152,7 +152,7 @@ type "%APPDATA%\Claude\logs\mcp-server-vmwhere.log"
 VCENTER_HOST=vcenter.example.com \
 VCENTER_USER=readonly@vsphere.local \
 VCENTER_PASSWORD=yourpassword \
-/Users/yourname/git/mcp-vmware/.venv/bin/python -m mcp_vmwhere
+/Users/yourname/git/mcp-vmware/.venv/bin/python -m mcp_vmware
 ```
 
 正常情況下不會有任何輸出(server 在等 stdin),按 `Ctrl-C` 結束即可。
@@ -162,14 +162,14 @@ VCENTER_PASSWORD=yourpassword \
 | 症狀 | 原因 |
 |---|---|
 | 完全看不到這個 connector | `claude_desktop_config.json` JSON 格式錯誤(多一個逗號就整份不載入) |
-| log 出現 `No such file` / `No module named mcp_vmwhere` | `command` 用了相對路徑,或該直譯器沒裝本專案 |
+| log 出現 `No such file` / `No module named mcp_vmware` | `command` 用了相對路徑,或該直譯器沒裝本專案 |
 | log 出現「缺少必要環境變數: …」 | `env` 少填 `VCENTER_HOST` / `VCENTER_USER` / `VCENTER_PASSWORD` |
 | TLS 憑證錯誤 | 自簽憑證環境請設 `"VCENTER_INSECURE": "true"` |
 
 ## 用 MCP Inspector 測試
 
 ```bash
-npx @modelcontextprotocol/inspector python -m mcp_vmwhere
+npx @modelcontextprotocol/inspector python -m mcp_vmware
 ```
 
 ## 提供的 Tool(全部唯讀)
@@ -209,11 +209,11 @@ PYTHONPATH=src HTTP_PORT=8000 MCP_AUTH_TOKEN=<token> python -m http_server
 - 驗證:請求需帶 `Authorization: Bearer <MCP_AUTH_TOKEN>`(可逗號分隔多組以便輪替)。
   未設 `MCP_AUTH_TOKEN` 時不驗證並在 log 警告 —— 任何連得到的人都能讀整個 vCenter inventory,只限本機除錯。
   另支援選用的 OAuth access token(`MCP_OAUTH_ISSUER`／`MCP_OAUTH_AUDIENCE`／`MCP_OAUTH_JWKS_URL`,三者皆設定才啟用),
-  詳見 `src/mcp_vmwhere/auth.py`。
+  詳見 `src/mcp_vmware/auth.py`。
 - `/health` 免驗證,供容器健康檢查使用。
 - 缺 `VCENTER_HOST`／`VCENTER_USER`／`VCENTER_PASSWORD` 時程序直接結束(健康檢查會失敗)。
 - 無狀態(stateless)、JSON 回應;全程序共用一個 vCenter session。
-- 工具名不帶前綴;Open WebUI 的函式名是「連線識別碼＋底線＋工具名」,例 `vmwhere_list_vms`。
+- 工具名不帶前綴;Open WebUI 的函式名是「連線識別碼＋底線＋工具名」,例 `vmware_list_vms`。
 - 所有 `list_*` 工具都回傳物件而非裸陣列:附 `total` 與依狀態／類型分組的計數(`list_datastores` 另附 GiB 換算、
   `used_pct`,並已依使用率由高到低排序)。數量一律由工具算好 —— LLM 自行計算長清單
   容易數錯。`list_vms` 另有 `name_contains`(不分大小寫的部分名稱比對)。
@@ -221,14 +221,14 @@ PYTHONPATH=src HTTP_PORT=8000 MCP_AUTH_TOKEN=<token> python -m http_server
 ### 容器與部署
 
 ```bash
-docker build --target production -t mcp-vmwhere .
+docker build --target production -t mcp-vmware .
 
-docker run -d --name mcp-vmwhere -p 8000:8000 \
+docker run -d --name mcp-vmware -p 8000:8000 \
   -e VCENTER_HOST=vcenter.example.com \
   -e VCENTER_USER=readonly@vsphere.local \
   -e VCENTER_PASSWORD=yourpassword \
   -e MCP_AUTH_TOKEN=<token> \
-  mcp-vmwhere
+  mcp-vmware
 
 curl http://localhost:8000/health
 ```

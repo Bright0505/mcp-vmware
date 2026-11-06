@@ -12,7 +12,7 @@ import sys
 from .config import ConfigError, load_config
 from .server import mcp
 
-logger = logging.getLogger("mcp_vmwhere")
+logger = logging.getLogger("mcp_vmware")
 
 
 def main() -> None:

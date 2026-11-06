@@ -27,9 +27,9 @@ from . import __version__, server
 from .auth import BearerTokenMiddleware, OAuthVerifier, load_auth_tokens, load_oauth_config
 from .config import load_config
 
-logger = logging.getLogger("mcp_vmwhere")
+logger = logging.getLogger("mcp_vmware")
 
-SERVICE_NAME = os.getenv("MCP_SERVER_NAME", "mcp-vmwhere")
+SERVICE_NAME = os.getenv("MCP_SERVER_NAME", "mcp-vmware")
 
 
 def create_app() -> Starlette:

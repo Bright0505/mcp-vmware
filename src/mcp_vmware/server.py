@@ -1,4 +1,4 @@
-"""vmWhere MCP server — 暴露 vCenter 唯讀查詢 tool。
+"""VMware MCP server — 暴露 vCenter 唯讀查詢 tool。
 
 遵循 MCP 2026-07-28 規範(MCP Python SDK 2.x):
   - 以 `MCPServer` 註冊 tool,並標註 `readOnlyHint`,明確宣告本 server 不會異動環境。
@@ -70,8 +70,8 @@ async def lifespan(_server: MCPServer) -> AsyncIterator[AppContext]:
 
 
 mcp = MCPServer(
-    name="vmwhere",
-    title="vmWhere — VMware vCenter(唯讀)",
+    name="vmware",
+    title="VMware vCenter(唯讀)",
     instructions=(
         "查詢 VMware vCenter 環境的唯讀工具集,涵蓋虛擬機、ESXi 主機、叢集、"
         "Datastore、網路、資料中心、資源池與資料夾。所有工具皆為唯讀,"
@@ -86,10 +86,10 @@ mcp = MCPServer(
     },
 )
 
-VMWhereContext = Context[AppContext, Any]
+VMwareContext = Context[AppContext, Any]
 
 
-async def _get(ctx: VMWhereContext, path: str, params: dict[str, Any] | None = None) -> Any:
+async def _get(ctx: VMwareContext, path: str, params: dict[str, Any] | None = None) -> Any:
     """代 tool 發出 vCenter GET 請求,並把錯誤轉成 MCP tool 錯誤結果。"""
     client = ctx.request_context.lifespan_context.vcenter
     try:
@@ -128,7 +128,7 @@ def _gib(value: int | None) -> float | None:
 
 @mcp.tool(title="列出虛擬機", annotations=READ_ONLY)
 async def list_vms(
-    ctx: VMWhereContext,
+    ctx: VMwareContext,
     power_state: Literal["POWERED_ON", "POWERED_OFF", "SUSPENDED"] | None = None,
     name: str | None = None,
     name_contains: str | None = None,
@@ -167,7 +167,7 @@ async def list_vms(
 
 
 @mcp.tool(title="取得虛擬機詳情", annotations=READ_ONLY)
-async def get_vm(ctx: VMWhereContext, vm_id: str) -> VMDetail:
+async def get_vm(ctx: VMwareContext, vm_id: str) -> VMDetail:
     """取得單一虛擬機的詳細資訊。
 
     彙整硬體設定(CPU、記憶體、磁碟、網卡)、電源狀態,以及客體 OS 身分資訊
@@ -199,7 +199,7 @@ async def get_vm(ctx: VMWhereContext, vm_id: str) -> VMDetail:
 
 @mcp.tool(title="列出 ESXi 主機", annotations=READ_ONLY)
 async def list_hosts(
-    ctx: VMWhereContext,
+    ctx: VMwareContext,
     connection_state: Literal["CONNECTED", "DISCONNECTED", "NOT_RESPONDING"] | None = None,
 ) -> HostListResult:
     """列出 vCenter 管理的 ESXi 主機,並附上依狀態分組的台數。
@@ -227,7 +227,7 @@ async def list_hosts(
 
 
 @mcp.tool(title="列出叢集", annotations=READ_ONLY)
-async def list_clusters(ctx: VMWhereContext) -> ClusterListResult:
+async def list_clusters(ctx: VMwareContext) -> ClusterListResult:
     """列出 vCenter 中的叢集(Cluster)。
 
     回傳 total、啟用 DRS／HA 的叢集數,以及每個叢集的 id、名稱與 DRS／HA 設定。
@@ -249,7 +249,7 @@ async def list_clusters(ctx: VMWhereContext) -> ClusterListResult:
 
 
 @mcp.tool(title="列出 Datastore", annotations=READ_ONLY)
-async def list_datastores(ctx: VMWhereContext) -> DatastoreListResult:
+async def list_datastores(ctx: VMwareContext) -> DatastoreListResult:
     """列出 vCenter 中的 Datastore(儲存),附上算好的容量與使用率。
 
     回傳:
@@ -285,7 +285,7 @@ async def list_datastores(ctx: VMWhereContext) -> DatastoreListResult:
 
 
 @mcp.tool(title="列出網路", annotations=READ_ONLY)
-async def list_networks(ctx: VMWhereContext) -> NetworkListResult:
+async def list_networks(ctx: VMwareContext) -> NetworkListResult:
     """列出 vCenter 中的網路 / Port Group。
 
     回傳 total、依類型分組的數量(STANDARD_PORTGROUP、DISTRIBUTED_PORTGROUP 等),
@@ -303,7 +303,7 @@ async def list_networks(ctx: VMWhereContext) -> NetworkListResult:
 
 
 @mcp.tool(title="列出資料中心", annotations=READ_ONLY)
-async def list_datacenters(ctx: VMWhereContext) -> DatacenterListResult:
+async def list_datacenters(ctx: VMwareContext) -> DatacenterListResult:
     """列出 vCenter 中的資料中心(Datacenter):total 與每個資料中心的 id、名稱。"""
     payload = await _get(ctx, "/api/vcenter/datacenter")
     dcs = [DatacenterSummary.model_validate(row) for row in _rows(payload)]
@@ -311,7 +311,7 @@ async def list_datacenters(ctx: VMWhereContext) -> DatacenterListResult:
 
 
 @mcp.tool(title="列出資源池", annotations=READ_ONLY)
-async def list_resource_pools(ctx: VMWhereContext) -> ResourcePoolListResult:
+async def list_resource_pools(ctx: VMwareContext) -> ResourcePoolListResult:
     """列出 vCenter 中的資源池(Resource Pool):total 與每個資源池的 id、名稱。"""
     payload = await _get(ctx, "/api/vcenter/resource-pool")
     pools = [ResourcePoolSummary.model_validate(row) for row in _rows(payload)]
@@ -319,7 +319,7 @@ async def list_resource_pools(ctx: VMWhereContext) -> ResourcePoolListResult:
 
 
 @mcp.tool(title="列出資料夾", annotations=READ_ONLY)
-async def list_folders(ctx: VMWhereContext) -> FolderListResult:
+async def list_folders(ctx: VMwareContext) -> FolderListResult:
     """列出 vCenter 中的資料夾(Folder)。
 
     回傳 total、依類型分組的數量(DATACENTER、VIRTUAL_MACHINE、HOST、DATASTORE、NETWORK),
