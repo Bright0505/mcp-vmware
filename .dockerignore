@@ -1,0 +1,9 @@
+.git
+.venv
+venv
+.env
+.mcp.json
+.claude
+tmp
+**/__pycache__
+*.egg-info
