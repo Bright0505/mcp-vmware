@@ -5,14 +5,17 @@
   - 每個 tool 都有 outputSchema / structuredContent(見 `models.py`)。
   - `tools/list` 提供 cache hint,讓用戶端可快取工具清單。
 
-所有 tool 僅對 vCenter 發出 GET 請求,不提供任何開關機、修改、刪除操作。
+inventory 查詢走 REST GET;效能數據走 SOAP 的 PerformanceManager 唯讀查詢(見 `perf.py`)。
+不提供任何開關機、修改、刪除操作。
 """
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import datetime, tzinfo
 from typing import Any, Literal
 
 from mcp.server.caching import CacheHint
@@ -25,6 +28,7 @@ from .config import load_config
 from .models import (
     ClusterListResult,
     ClusterSummary,
+    DailyStat,
     DatacenterListResult,
     DatacenterSummary,
     DatastoreListResult,
@@ -33,14 +37,18 @@ from .models import (
     FolderSummary,
     HostListResult,
     HostSummary,
+    MetricPerformance,
+    MetricStats,
     NetworkListResult,
     NetworkSummary,
     ResourcePoolListResult,
     ResourcePoolSummary,
     VMDetail,
     VMListResult,
+    VMPerformance,
     VMSummary,
 )
+from .perf import PerfClient, PerfError, daily, summarize
 from .vcenter import VCenterClient, VCenterError
 
 #: 所有 tool 共用的標註 — 唯讀、不具破壞性、可重複呼叫、查詢外部系統。
@@ -57,16 +65,22 @@ class AppContext:
     """Server 生命週期內共用的資源。"""
 
     vcenter: VCenterClient
+    perf: PerfClient
+    tz: tzinfo | None  # VCENTER_TIMEZONE;None 表示用行程本機時區
+    tz_name: str | None  # VCENTER_TIMEZONE 的 IANA 名稱
 
 
 @asynccontextmanager
 async def lifespan(_server: MCPServer) -> AsyncIterator[AppContext]:
-    """建立 vCenter client,並在 server 結束時登出。"""
-    client = VCenterClient(load_config())
+    """建立 vCenter client(REST 與效能查詢用的 SOAP),並在 server 結束時登出。"""
+    config = load_config()
+    client = VCenterClient(config)
+    perf = PerfClient(config)  # 延遲登入,第一次查效能時才連線
     try:
-        yield AppContext(vcenter=client)
+        yield AppContext(vcenter=client, perf=perf, tz=config.tz, tz_name=config.timezone)
     finally:
         await client.aclose()
+        await asyncio.to_thread(perf.close)
 
 
 mcp = MCPServer(
@@ -74,7 +88,7 @@ mcp = MCPServer(
     title="VMware vCenter(唯讀)",
     instructions=(
         "查詢 VMware vCenter 環境的唯讀工具集,涵蓋虛擬機、ESXi 主機、叢集、"
-        "Datastore、網路、資料中心、資源池與資料夾。所有工具皆為唯讀,"
+        "Datastore、網路、資料中心、資源池與資料夾,以及 VM 歷史效能數據。所有工具皆為唯讀,"
         "不會開關機或修改任何 vCenter 資源。"
     ),
     version=__version__,
@@ -192,6 +206,69 @@ async def get_vm(ctx: VMwareContext, vm_id: str) -> VMDetail:
             f"無法取得客體資訊(VM 可能未開機或未安裝 VMware Tools): {exc}"
         )
     return detail
+
+
+@mcp.tool(title="取得虛擬機效能數據", annotations=READ_ONLY)
+async def get_vm_performance(
+    ctx: VMwareContext,
+    vm_id: str,
+    days: int = 7,
+    include_series: bool = False,
+) -> VMPerformance:
+    """取得單一虛擬機近幾天的歷史效能數據與統計。
+
+    從 vCenter PerformanceManager 讀取 CPU(使用率、MHz、Ready)、記憶體(使用率、
+    consumed、active、balloon、swap)、磁碟(吞吐量、最大延遲)、網路吞吐量,
+    回傳每個指標的 min / max / avg / p95 / 最新值、峰值時間與每日統計。
+
+    取樣間隔依 vCenter 統計間隔設定自動選擇(預設:1 天內 5 分鐘、1 週內 30 分鐘、
+    1 個月內 2 小時、1 年內 1 天)。統計層級不足未收集、或期間內全無資料的指標
+    會列在 unavailable_metrics。分日與時間以 VCENTER_TIMEZONE(未設定則本機時區)為準。
+
+    參數:
+        vm_id: VM 的 managed object id,例如 "vm-123"(可由 list_vms 取得)。
+        days: 查詢最近幾天,1~365,預設 7。
+        include_series: 是否附上完整時間序列(資料量較大),預設 false。
+    """
+    if not 1 <= days <= 365:
+        raise ToolError("days 必須介於 1 到 365 之間。")
+
+    app = ctx.request_context.lifespan_context
+    tz = app.tz
+    try:
+        result = await asyncio.to_thread(app.perf.query_vm, vm_id, days)
+    except PerfError as exc:
+        raise ToolError(str(exc)) from exc
+
+    def fmt(ts: datetime) -> str:
+        return ts.astimezone(tz).isoformat(timespec="minutes")
+
+    local_end = result.end.astimezone(tz)
+    metrics = [
+        MetricPerformance(
+            metric=m.counter,
+            description=m.description,
+            unit=m.unit,
+            samples=len(m.samples),
+            stats=MetricStats(**summarize(m.samples, tz)),
+            daily=[DailyStat(**d) for d in daily(m.samples, tz)],
+            series=[(fmt(ts), round(v, 2)) for ts, v in m.samples] if include_series else None,
+        )
+        for m in result.metrics
+    ]
+    return VMPerformance(
+        vm_id=vm_id,
+        vm_name=result.vm_name,
+        vcpu_count=result.vcpu_count,
+        start=fmt(result.start),
+        end=fmt(result.end),
+        timezone=f"{app.tz_name or local_end.tzname()} (UTC{local_end.strftime('%z')})",
+        interval_seconds=result.interval_seconds,
+        stats_level=result.stats_level,
+        metrics=metrics,
+        unavailable_metrics=result.unavailable,
+        notes=result.notes,
+    )
 
 
 # --- 主機 / 叢集 ------------------------------------------------------------
