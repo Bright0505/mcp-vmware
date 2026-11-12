@@ -54,6 +54,7 @@ class DailyStat(BaseModel):
     date: str
     avg: float
     max: float
+    peak_time: str  # 當日最大值發生時間(ISO 8601,時區同 date)
 
 
 class MetricPerformance(BaseModel):

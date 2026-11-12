@@ -208,7 +208,7 @@ npx @modelcontextprotocol/inspector python -m mcp_vmware
   都涵蓋不到時取保留最久者,並寫在 `notes`。查詢結束時間以 vCenter 伺服器時間為準。
 - 指標(皆取彙總值):CPU 使用率／MHz／Ready、記憶體 usage／consumed／active／balloon／swap、
   磁碟吞吐量與最大延遲、網路吞吐量。
-- 每個指標回傳 min / max / avg / p95 / 最新值、峰值時間,以及每日平均與最大值。
+- 每個指標回傳 min / max / avg / p95 / 最新值、峰值時間,以及每日平均、最大值與當日峰值時間(`daily[].peak_time`)。
 - 單位換算:百分比已除以 100、記憶體為 MiB、吞吐量為 KBps;`cpu.ready.summation`
   換算為「每 vCPU 平均 Ready %」。
 - 統計層級 1(vCenter 預設)不收集 `mem.active`、`mem.swapped`,

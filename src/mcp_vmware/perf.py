@@ -308,11 +308,21 @@ def summarize(
 def daily(
     samples: list[tuple[datetime, float]], tz: tzinfo | None = None
 ) -> list[dict[str, Any]]:
-    """依指定時區(未指定時用本機時區)的日期分組,回傳每日平均與最大值。"""
-    groups: dict[str, list[float]] = defaultdict(list)
+    """依指定時區(未指定時用本機時區)的日期分組,回傳每日平均、最大值與最大值發生時間。"""
+    groups: dict[str, list[tuple[datetime, float]]] = defaultdict(list)
     for ts, v in samples:
-        groups[ts.astimezone(tz).date().isoformat()].append(v)
-    return [
-        {"date": day, "avg": round(sum(vs) / len(vs), 2), "max": round(max(vs), 2)}
-        for day, vs in sorted(groups.items())
-    ]
+        local = ts.astimezone(tz)
+        groups[local.date().isoformat()].append((local, v))
+    result = []
+    for day, pts in sorted(groups.items()):
+        vals = [v for _, v in pts]
+        peak_ts, peak = max(pts, key=lambda p: p[1])  # 同值取最早出現的時間
+        result.append(
+            {
+                "date": day,
+                "avg": round(sum(vals) / len(vals), 2),
+                "max": round(peak, 2),
+                "peak_time": peak_ts.isoformat(timespec="minutes"),
+            }
+        )
+    return result
