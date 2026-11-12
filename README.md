@@ -3,8 +3,10 @@
 一個**唯讀**的 MCP server,讓 Claude 能查詢 VMware vCenter 環境。
 
 - 只讀不控 — 不提供任何開關機、修改、刪除等操作。
-- 透過 vSphere Automation **REST API**(`/api/vcenter/*`)呼叫 vCenter。
-- 僅發出 `GET` 請求查詢資訊(唯一例外是 session 登入/登出)。
+- inventory 查詢透過 vSphere Automation **REST API**(`/api/vcenter/*`),僅發出 `GET` 請求
+  (唯一例外是 session 登入/登出)。
+- VM 歷史效能數據透過 vSphere Web Services(SOAP)的 **PerformanceManager**,只呼叫唯讀方法
+  (REST API 在 vCenter 7 沒有效能端點)。
 - 遵循 **MCP 2026-07-28** 規範(MCP Python SDK 2.x)。
 
 ## MCP 2.x 規範對應
@@ -30,7 +32,8 @@
 pip install -e .
 ```
 
-相依套件:`mcp>=2.2.0`、`httpx2`(MCP SDK 2.x 隨附的 HTTP client)、`pydantic`。
+相依套件:`mcp>=2.2.0`、`httpx2`(MCP SDK 2.x 隨附的 HTTP client)、`pydantic`、
+`pyvmomi`(效能數據查詢用)、`tzdata`(時區資料)。
 
 ## 設定
 
@@ -42,6 +45,7 @@ pip install -e .
 | `VCENTER_USER` | 是 | 帳號,例 `administrator@vsphere.local` |
 | `VCENTER_PASSWORD` | 是 | 密碼 |
 | `VCENTER_INSECURE` | 否 | 設為 `true` 時關閉 TLS 憑證驗證(內部自簽憑證環境用),預設 `false` |
+| `VCENTER_TIMEZONE` | 否 | `get_vm_performance` 分日與時間顯示用的時區(IANA 名稱,例 `Asia/Taipei`),無效名稱啟動時報錯;未設定時用行程本機時區(容器通常是 UTC) |
 
 ## 啟動
 
@@ -124,13 +128,14 @@ python -c "import sys; print(sys.executable)"
 3. **完全結束**(Quit,不是關視窗)Claude Desktop 後重新開啟。
 
 4. 在對話輸入框左下角點 **Add files, connectors, and more** → **Connectors** →
-   **Manage connectors**,選 `vmware` 就會看到本 server 的 9 個唯讀工具。
+   **Manage connectors**,選 `vmware` 就會看到本 server 的 10 個唯讀工具。
 
 ### 試著問問看
 
 - 「現在有幾台 VM 是開機狀態?」
 - 「列出所有 ESXi 主機和它們的連線狀態」
 - 「哪個 datastore 的剩餘空間最少?」
+- 「給我 vm-123 近一週的效能分析」
 
 ### 疑難排解
 
@@ -178,6 +183,7 @@ npx @modelcontextprotocol/inspector python -m mcp_vmware
 |---|---|---|
 | `list_vms` | 列出虛擬機摘要(可依電源狀態、名稱過濾) | `VMSummary[]` |
 | `get_vm` | 取得單一 VM 詳情(硬體、電源、客體 OS) | `VMDetail` |
+| `get_vm_performance` | 取得單一 VM 近 N 天的效能數據(CPU、記憶體、磁碟、網路)與統計 | `VMPerformance` |
 | `list_hosts` | 列出 ESXi 主機(可依連線狀態過濾) | `HostSummary[]` |
 | `list_clusters` | 列出叢集 | `ClusterSummary[]` |
 | `list_datastores` | 列出 Datastore 容量資訊 | `DatastoreSummary[]` |
@@ -189,10 +195,34 @@ npx @modelcontextprotocol/inspector python -m mcp_vmware
 回傳模型的欄位名稱與 vSphere REST API 一致,且允許額外欄位 —
 不同 vCenter 版本多回的欄位會原樣保留,不會被丟棄或造成驗證失敗。
 
+### `get_vm_performance` 說明
+
+| 參數 | 預設 | 說明 |
+|---|---|---|
+| `vm_id` | — | VM 的 managed object id,例 `vm-123` |
+| `days` | `7` | 查詢最近幾天(1~365) |
+| `include_series` | `false` | 是否附上完整時間序列 |
+
+- 取樣間隔依 vCenter「統計資料」設定,自動選擇能涵蓋查詢範圍的最細間隔
+  (預設:1 天內 5 分鐘、1 週內 30 分鐘、1 個月內 2 小時、1 年內 1 天);
+  都涵蓋不到時取保留最久者,並寫在 `notes`。查詢結束時間以 vCenter 伺服器時間為準。
+- 指標(皆取彙總值):CPU 使用率／MHz／Ready、記憶體 usage／consumed／active／balloon／swap、
+  磁碟吞吐量與最大延遲、網路吞吐量。
+- 每個指標回傳 min / max / avg / p95 / 最新值、峰值時間,以及每日平均與最大值。
+- 單位換算:百分比已除以 100、記憶體為 MiB、吞吐量為 KBps;`cpu.ready.summation`
+  換算為「每 vCPU 平均 Ready %」。
+- 統計層級 1(vCenter 預設)不收集 `mem.active`、`mem.swapped`,
+  這些會列在 `unavailable_metrics`;需要時可把該統計間隔的層級調到 2。
+  查詢期間全無資料(全為 -1)的指標也會列在這裡。
+- 每日統計與時間以 `VCENTER_TIMEZONE` 為準;容器部署請設定,否則會以 UTC 分日(台灣會偏 8 小時)。
+- 權限:唯讀(Read-only)角色即可,不需額外權限。
+
 ## 安全說明
 
 - 本 server 不會對 vCenter 做任何異動;`vcenter.py` 中除 session 登入(`POST /api/session`)
   與登出(`DELETE /api/session`)外,僅有 `GET` 請求。
+- `perf.py` 走 SOAP API(協定上一律是 POST),只呼叫 `Login` / `Logout`、`CurrentTime`、
+  屬性讀取,以及 `QueryAvailablePerfMetric` / `QueryPerf` 這些唯讀方法。
 - 所有 tool 皆標註 `readOnlyHint`,用戶端可據此判斷本 server 不會改動環境。
 - 建議搭配僅具唯讀權限的 vCenter 服務帳號使用,以從權限層面再加一道保險。
 - Claude Desktop / Claude Code 的設定檔會以明文存放 `VCENTER_PASSWORD`,請勿把設定檔提交進版控;

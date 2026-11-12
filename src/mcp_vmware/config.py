@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import tzinfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 class ConfigError(RuntimeError):
@@ -19,6 +21,12 @@ class Config:
     user: str
     password: str
     insecure: bool
+    #: 效能數據分日與時間顯示用的時區(IANA 名稱,例 Asia/Taipei);未設定時用行程本機時區。
+    timezone: str | None = None
+
+    @property
+    def tz(self) -> tzinfo | None:
+        return ZoneInfo(self.timezone) if self.timezone else None
 
     @property
     def base_url(self) -> str:
@@ -47,4 +55,13 @@ def load_config() -> Config:
 
     insecure = os.environ.get("VCENTER_INSECURE", "").strip().lower() in _TRUE
 
-    return Config(host=host, user=user, password=password, insecure=insecure)
+    timezone = os.environ.get("VCENTER_TIMEZONE", "").strip() or None
+    if timezone:
+        try:
+            ZoneInfo(timezone)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ConfigError(f"VCENTER_TIMEZONE 不是有效的時區名稱: {timezone}") from exc
+
+    return Config(
+        host=host, user=user, password=password, insecure=insecure, timezone=timezone
+    )

@@ -37,6 +37,53 @@ class VMDetail(_VCenterModel):
     guest_identity_note: str | None = None
 
 
+class MetricStats(BaseModel):
+    """單一指標於查詢期間的統計值。"""
+
+    min: float
+    max: float
+    avg: float
+    p95: float
+    latest: float
+    peak_time: str  # 最大值發生時間(ISO 8601,VCENTER_TIMEZONE 時區)
+
+
+class DailyStat(BaseModel):
+    """單一指標的每日統計(依 VCENTER_TIMEZONE 分日)。"""
+
+    date: str
+    avg: float
+    max: float
+
+
+class MetricPerformance(BaseModel):
+    """單一效能指標的結果。"""
+
+    metric: str  # vCenter counter 名稱,例 cpu.usage.average
+    description: str
+    unit: str  # percent / MHz / MiB / KBps / millisecond
+    samples: int
+    stats: MetricStats
+    daily: list[DailyStat]
+    series: list[tuple[str, float]] | None = None  # (時間, 值),include_series=true 時才有
+
+
+class VMPerformance(BaseModel):
+    """VM 歷史效能數據(get_vm_performance)。"""
+
+    vm_id: str
+    vm_name: str
+    vcpu_count: int | None = None
+    start: str
+    end: str
+    timezone: str  # 例 "Asia/Taipei (UTC+0800)"
+    interval_seconds: int  # 每筆樣本代表的時間長度
+    stats_level: int | None = None  # 該統計間隔在 vCenter 的統計層級
+    metrics: list[MetricPerformance]
+    unavailable_metrics: list[str]
+    notes: list[str]
+
+
 class HostSummary(_VCenterModel):
     """ESXi 主機摘要(GET /api/vcenter/host)。"""
 

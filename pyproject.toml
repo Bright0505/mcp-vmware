@@ -1,7 +1,7 @@
 [project]
 name = "mcp-vmware"
-version = "0.1.0"
-description = "Read-only MCP server for VMware vCenter (vSphere REST API)"
+version = "0.2.0"
+description = "Read-only MCP server for VMware vCenter (vSphere REST + PerformanceManager)"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "bright0505", email = "bright.su72@gmail.com" }]
@@ -13,6 +13,10 @@ dependencies = [
     # HTTP 模式(Streamable HTTP + Bearer/OAuth 驗證)
     "uvicorn[standard]>=0.30.0",
     "PyJWT[crypto]>=2.8.0",
+    # VM 歷史效能數據(vCenter 7 REST 無效能端點,走 SOAP PerformanceManager)
+    "pyvmomi>=8.0.1",
+    # zoneinfo 的時區資料(slim 映像檔可能沒有系統 tzdata)
+    "tzdata>=2024.1",
 ]
 
 [project.scripts]
